@@ -45,8 +45,8 @@ def send_message_to_all(body_text):
     """שליחת הודעה לכל המספרים"""
     for num in TO_NUMBERS:
         try:
-            msg = client.messages.create(from_=FROM_NUMBER, to=num, body=body_text)
-            app.logger.info(f"נשלחה הודעה אל {num}, SID={msg.sid}")
+            client.messages.create(from_=FROM_NUMBER, to=num, body=body_text)
+            app.logger.info(f"נשלחה הודעה אל {num}")
         except Exception as e:
             app.logger.error(f"שגיאה בשליחה אל {num}: {e}")
 
@@ -147,15 +147,16 @@ def incoming():
     app.logger.info(f"📩 הודעה מ-{from_number}: {body}")
 
     # ניקוי סימנים
-    clean_body = body.replace("!", "").replace(".", "").strip()
+    clean_body = body.replace("!", "").replace(".", "").replace(" ", "").strip()
 
     data = load_status()
     responses = data.get("responses", {})
     responses[from_number] = clean_body
     data["responses"] = responses
 
-    # אם מישהו ענה כן
-    if any(v in ["כן", "yes", "done"] for v in responses.values()):
+    # אם מישהו ענה כן — עוצרים ומודים לכולם
+    normalized = [v.replace("!", "").replace(".", "").replace(" ", "") for v in responses.values()]
+    if any(v in ["כן", "yes", "done"] for v in normalized):
         data["answered"] = True
         save_status(data)
         send_final_message()
@@ -169,7 +170,6 @@ def incoming():
 
 # ====== התחלה אוטומטית ======
 if __name__ != "__main__":
-    # Render מריץ את Gunicorn - צריך להפעיל scheduler כאן
     start_scheduler_background()
 
 if __name__ == "__main__":
