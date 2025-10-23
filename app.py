@@ -161,16 +161,16 @@ def incoming():
         send_final_message()
         stop_scheduler_background()
     else:
-        data["answered"] = False
+        # לא לדרוס תשובה קודמת אם כבר נענתה בחיוב
+        data["answered"] = data.get("answered", False)
         save_status(data)
 
     return "OK", 200
 
 
 # ====== התחלה אוטומטית ======
-start_scheduler_background()
-
 if __name__ == "__main__":
+    start_scheduler_background()
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=True)
 
