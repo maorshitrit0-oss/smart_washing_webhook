@@ -35,13 +35,13 @@ def save_status(data):
 
 
 def mark_response(number, text):
-    """עדכון תשובה למספר מסוים"""
+    """עדכון תשובה ממספר מסוים"""
     data = load_status()
     responses = data.get("responses", {})
     responses[number] = text
     data["responses"] = responses
 
-    # אם מישהו ענה כן → נעצור תזכורות
+    # אם מישהו ענה כן → עצור הכל
     if text in ["yes", "כן"]:
         data["answered"] = True
         save_status(data)
@@ -51,7 +51,7 @@ def mark_response(number, text):
         save_status(data)
 
 
-# --- פונקציה לשליחת הודעת סיום ---
+# --- שליחת הודעת סיום ---
 def send_final_message():
     for num in TO_NUMBERS:
         client.messages.create(
@@ -68,13 +68,13 @@ def health():
     return {"status": "ok"}, 200
 
 
-# --- בדיקת סטטוס ---
+# --- בדיקת סטטוס נוכחי ---
 @app.get("/status")
 def status():
     return load_status(), 200
 
 
-# --- שליחת הודעה (תזכורת או מבחן) ---
+# --- שליחת הודעת סקר ידנית (לבדיקה) ---
 @app.get("/send-test")
 def send_test():
     data = load_status()
@@ -91,6 +91,25 @@ def send_test():
     return {"status": "sent"}, 200
 
 
+# --- שליחת תזכורות אוטומטיות (ל-CRON) ---
+@app.get("/send-reminder")
+def send_reminder():
+    data = load_status()
+
+    if data.get("answered"):
+        print("✅ כבר נענו, אין צורך בתזכורת נוספת.")
+        return {"status": "already_answered"}, 200
+
+    for num in TO_NUMBERS:
+        client.messages.create(
+            from_=FROM_NUMBER,
+            to=num,
+            body="⏰ תזכורת אוטומטית: האם המכונה סיימה לעבוד? השיבו 'כן' או 'לא'."
+        )
+    print("🔁 נשלחה תזכורת אוטומטית לשני המספרים.")
+    return {"status": "reminder_sent"}, 200
+
+
 # --- הודעות נכנסות ---
 @app.post("/incoming")
 def incoming_whatsapp():
@@ -98,13 +117,11 @@ def incoming_whatsapp():
     body = (request.form.get("Body") or "").strip().lower()
 
     print(f"📩 הודעה מ-{from_number}: {body}")
-
-    # נעדכן את הסטטוס ונבדוק אם צריך לעצור תזכורות
     mark_response(from_number, body)
-
     return "OK", 200
 
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000, debug=True)
+
 
