@@ -168,9 +168,12 @@ def incoming():
 
 
 # ====== התחלה אוטומטית ======
-if __name__ == "__main__":
+if __name__ != "__main__":
+    # Render מריץ את Gunicorn - צריך להפעיל scheduler כאן
     start_scheduler_background()
-    port = int(os.environ.get("PORT", 10000))  # Render מחייב שימוש בפורט דינמי
-    app.run(host="0.0.0.0", port=port)
 
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    start_scheduler_background()
+    app.run(host="0.0.0.0", port=port)
 
