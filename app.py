@@ -8,49 +8,73 @@ app = Flask(__name__)
 # --- הגדרות Twilio ---
 TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
-FROM_NUMBER = "whatsapp:+14155238886"  # מספר ה-Sandbox של Twilio
+FROM_NUMBER = "whatsapp:+14155238886"
 
-# שני מספרים למשלוח
 TO_NUMBERS = [
     "whatsapp:+972534313371",  # אתה
     "whatsapp:+972523340644"   # אשתך
 ]
 
 client = Client(TWILIO_SID, TWILIO_TOKEN)
-STATUS_FILE = "survey_status.json"  # קובץ לניהול מצב הסקר
+STATUS_FILE = "survey_status.json"
 
 
-# --- פונקציות עזר לניהול קובץ הסטטוס ---
+# --- פונקציות עזר לניהול סטטוס ---
 
 def load_status():
-    """קריאת מצב נוכחי מקובץ JSON"""
     if not os.path.exists(STATUS_FILE):
-        return {"answered": False}
+        return {"responses": {}, "answered": False}
     with open(STATUS_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def save_status(answered: bool):
-    """שמירת סטטוס תשובה לקובץ"""
+def save_status(data):
     with open(STATUS_FILE, "w", encoding="utf-8") as f:
-        json.dump({"answered": answered}, f, ensure_ascii=False, indent=2)
-    print(f"💾 נשמר סטטוס: answered={answered}")
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    print(f"💾 נשמר סטטוס חדש: {data}")
 
 
-# --- בדיקת חיים בסיסית ---
+def mark_response(number, text):
+    """עדכון תשובה למספר מסוים"""
+    data = load_status()
+    responses = data.get("responses", {})
+    responses[number] = text
+    data["responses"] = responses
+
+    # אם מישהו ענה כן → נעצור תזכורות
+    if text in ["yes", "כן"]:
+        data["answered"] = True
+        save_status(data)
+        send_final_message()
+    else:
+        data["answered"] = any(resp in ["yes", "כן"] for resp in responses.values())
+        save_status(data)
+
+
+# --- פונקציה לשליחת הודעת סיום ---
+def send_final_message():
+    for num in TO_NUMBERS:
+        client.messages.create(
+            from_=FROM_NUMBER,
+            to=num,
+            body="✅ תודה רבה! המשך יום טוב 🌞"
+        )
+    print("🎉 נשלחה הודעת סיום לשני המספרים.")
+
+
+# --- בדיקה בסיסית ---
 @app.get("/health")
 def health():
     return {"status": "ok"}, 200
 
 
-# --- בדיקת סטטוס נוכחי ---
+# --- בדיקת סטטוס ---
 @app.get("/status")
 def status():
-    data = load_status()
-    return data, 200
+    return load_status(), 200
 
 
-# --- שליחת הודעת מבחן לשני המספרים ---
+# --- שליחת הודעה (תזכורת או מבחן) ---
 @app.get("/send-test")
 def send_test():
     data = load_status()
@@ -58,33 +82,25 @@ def send_test():
         return {"status": "already_answered"}, 200
 
     for num in TO_NUMBERS:
-        msg = client.messages.create(
+        client.messages.create(
             from_=FROM_NUMBER,
-            body="📢 הודעת מבחן משודרת לשני המספרים! ✅",
-            to=num
+            to=num,
+            body="📢 תזכורת: האם המכונה סיימה לעבוד? השיבו 'כן' או 'לא'."
         )
-        print(f"נשלחה הודעה אל {num}, SID={msg.sid}")
+    print("📨 נשלחו תזכורות לשני המספרים.")
+    return {"status": "sent"}, 200
 
-    return {"status": "sent_to_all"}, 200
 
-
-# --- קליטת הודעות נכנסות מ-Twilio ---
+# --- הודעות נכנסות ---
 @app.post("/incoming")
 def incoming_whatsapp():
     from_number = request.form.get("From", "")
     body = (request.form.get("Body") or "").strip().lower()
-    print("📩 הודעה נכנסת:")
-    print(f"From: {from_number}")
-    print(f"Body: {body}")
 
-    if body in ["כן", "yes", "done"]:
-        save_status(True)
-        print("✅ המשתמש ענה כן – הסקר סומן כנגמר.")
-    elif body in ["לא", "no"]:
-        save_status(False)
-        print("❌ המשתמש ענה לא – נמשיך בתזכורות.")
-    else:
-        print("ℹ️ תשובה לא מזוהה (לא כן/לא).")
+    print(f"📩 הודעה מ-{from_number}: {body}")
+
+    # נעדכן את הסטטוס ונבדוק אם צריך לעצור תזכורות
+    mark_response(from_number, body)
 
     return "OK", 200
 
