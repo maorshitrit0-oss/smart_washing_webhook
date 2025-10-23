@@ -1,10 +1,7 @@
-from flask
-import Flask, request, jsonify
-from twilio.rest
-import Client
+from flask import Flask, request, jsonify
+from twilio.rest import Client
 import os, json, threading, time
-from datetime 
-import datetime
+from datetime import datetime
 
 app = Flask(__name__)
 
