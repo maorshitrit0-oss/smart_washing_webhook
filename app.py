@@ -1,7 +1,10 @@
-from flask import Flask, request, jsonify
-from twilio.rest import Client
+from flask
+import Flask, request, jsonify
+from twilio.rest
+import Client
 import os, json, threading, time
-from datetime import datetime
+from datetime 
+import datetime
 
 app = Flask(__name__)
 
@@ -67,14 +70,14 @@ def scheduler_loop():
     while not _scheduler_stop_event.is_set():
         data = load_status()
 
-        # אם טרם נשלחה ההודעה הראשונה
+        # הודעה ראשונה
         if not data.get("first_sent", False):
             app.logger.info("📢 שולח הודעה ראשונה - המכונה סיימה לעבוד.")
             send_message_to_all("📢 המכונה סיימה לעבוד! האם תלית את הכביסה?\nאנא השב 'כן' או 'לא'.")
             data["first_sent"] = True
             save_status(data)
 
-        # אם טרם נענו
+        # תזכורת כל 5 דקות אם אין תשובה
         elif not data.get("answered"):
             now = datetime.now().strftime("%H:%M:%S")
             app.logger.info(f"🔁 טרם נענו – שולח תזכורת ({now})")
@@ -85,7 +88,7 @@ def scheduler_loop():
             break
 
         # המתנה 5 דקות
-        app.logger.info(f"🕒 ממתין {REMINDER_INTERVAL_SECONDS} שניות לפני התזכורת הבאה ({datetime.now().strftime('%H:%M:%S')})")
+        app.logger.info(f"🕒 ממתין {REMINDER_INTERVAL_SECONDS} שניות לפני התזכורת הבאה")
         completed = _scheduler_stop_event.wait(timeout=REMINDER_INTERVAL_SECONDS)
         if completed:
             break
@@ -161,8 +164,7 @@ def incoming():
         send_final_message()
         stop_scheduler_background()
     else:
-        # לא לדרוס תשובה קודמת אם כבר נענתה בחיוב
-        data["answered"] = data.get("answered", False)
+        data["answered"] = False
         save_status(data)
 
     return "OK", 200
@@ -171,7 +173,7 @@ def incoming():
 # ====== התחלה אוטומטית ======
 if __name__ == "__main__":
     start_scheduler_background()
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    port = int(os.environ.get("PORT", 10000))  # Render מחייב שימוש בפורט דינמי
+    app.run(host="0.0.0.0", port=port)
 
 
