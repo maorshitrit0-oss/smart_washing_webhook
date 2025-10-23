@@ -1,9 +1,8 @@
-# app.py
 from flask import Flask, request, jsonify
 from twilio.rest import Client
 import os, json, threading, time
+from datetime import datetime
 
-# יצירת אפליקציית Flask
 app = Flask(__name__)
 
 # ====== CONFIG ======
@@ -56,30 +55,27 @@ def send_final_message():
     app.logger.info("🎉 נשלחה הודעת סיום לשני המספרים.")
 
 
-# ====== Scheduler (תזמון פנימי בחינם) ======
+# ====== Scheduler ======
 _scheduler_thread = None
 _scheduler_stop_event = threading.Event()
 
-
 def scheduler_loop():
-    """לולאת תזמון שנשלחת כל 5 דקות עד שמישהו עונה כן"""
+    """לולאת תזכורת כל 5 דקות עד שמישהו עונה 'כן'"""
     app.logger.info("⏱️ Scheduler התחיל לפעול.")
     while not _scheduler_stop_event.is_set():
         data = load_status()
         if not data.get("answered"):
-            app.logger.info("🔁 טרם נענו – שולח תזכורת לשני המספרים.")
+            app.logger.info(f"🔁 טרם נענו – שולח תזכורת לשני המספרים. ({datetime.now().strftime('%H:%M:%S')})")
             send_message_to_all("⏰ תזכורת: האם המכונה סיימה לעבוד? השיבו 'כן' או 'לא'.")
         else:
             app.logger.info("✅ נמצא answered=True – אין צורך בתזכורות נוספות.")
-        # המתנה 5 דקות (או עצירה מוקדמת)
+            break
         completed = _scheduler_stop_event.wait(timeout=REMINDER_INTERVAL_SECONDS)
         if completed:
             break
     app.logger.info("🛑 Scheduler הופסק.")
 
-
 def start_scheduler_background():
-    """הפעלת תזמון ברקע אם לא פעיל"""
     global _scheduler_thread
     if _scheduler_thread is None or not _scheduler_thread.is_alive():
         _scheduler_stop_event.clear()
@@ -87,40 +83,29 @@ def start_scheduler_background():
         _scheduler_thread.start()
         app.logger.info("🚀 Scheduler הופעל בהצלחה.")
 
-
 def stop_scheduler_background():
-    """עצירת התזמון"""
     _scheduler_stop_event.set()
-    if _scheduler_thread is not None:
-        _scheduler_thread.join(timeout=2)
-        app.logger.info("⏹️ Scheduler נעצר בהצלחה.")
+    app.logger.info("⏹️ Scheduler נעצר בהצלחה.")
 
 
-# ====== Flask routes ======
-
+# ====== Flask Routes ======
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
-
 @app.route("/status", methods=["GET"])
 def status():
-    """בדיקת סטטוס נוכחי"""
     return jsonify(load_status()), 200
-
 
 @app.route("/reset-status", methods=["GET"])
 def reset_status():
-    """איפוס הסקר"""
     data = {"responses": {}, "answered": False}
     save_status(data)
-    start_scheduler_background()  # הפעלה מחדש אחרי איפוס
+    start_scheduler_background()
     return jsonify({"status": "reset"}), 200
-
 
 @app.route("/send-test", methods=["GET"])
 def send_test():
-    """שליחה ידנית לבדיקה"""
     data = load_status()
     if data.get("answered"):
         return jsonify({"status": "already_answered"}), 200
@@ -135,31 +120,33 @@ def incoming():
     body = (request.form.get("Body") or "").strip().lower()
     app.logger.info(f"📩 הודעה מ-{from_number}: {body}")
 
+    # ננקה סימנים מיותרים כמו ! או .
+    clean_body = body.replace("!", "").replace(".", "").strip()
+
     data = load_status()
     responses = data.get("responses", {})
-    responses[from_number] = body
+    responses[from_number] = clean_body
     data["responses"] = responses
 
-    # אם מישהו ענה כן -> לסמן ולשלוח הודעת סיום
-    if body in ["כן", "yes", "done"]:
+    # אם אחד מהמספרים ענה כן -> שולחים הודעת סיום ומפסיקים
+    if any(v in ["כן", "yes", "done"] for v in responses.values()):
         data["answered"] = True
         save_status(data)
         try:
             send_final_message()
         except Exception as e:
             app.logger.error(f"שגיאה בשליחת הודעת סיום: {e}")
-        stop_scheduler_background()  # לעצור את התזכורות
+        stop_scheduler_background()
     else:
-        data["answered"] = any(v in ["כן", "yes", "done"] for v in responses.values())
+        data["answered"] = False
         save_status(data)
 
     return "OK", 200
 
 
 # ====== התחלה אוטומטית ======
-start_scheduler_background()  # מתחיל תזמון מיד עם עליית האפליקציה
+start_scheduler_background()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000, debug=True)
-
 
